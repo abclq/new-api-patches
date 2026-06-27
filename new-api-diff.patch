@@ -1,0 +1,36 @@
+diff --git a/controller/relay.go b/controller/relay.go
+index 1d14dcc..f60a72e 100644
+--- a/controller/relay.go
++++ b/controller/relay.go
+@@ -221,6 +221,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+ 		}
+ 
+ 		if newAPIError == nil {
++			model.RecordChannelSuccess(channel.Id, 0)
+ 			relayInfo.LastError = nil
+ 			return
+ 		}
+@@ -229,6 +230,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+ 		relayInfo.LastError = newAPIError
+ 
+ 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
++		model.RecordChannelFailure(channel.Id)
+ 
+ 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+ 			break
+diff --git a/model/channel_cache.go b/model/channel_cache.go
+index 03740d2..00e6c18 100644
+--- a/model/channel_cache.go
++++ b/model/channel_cache.go
+@@ -148,6 +148,11 @@ func GetRandomSatisfiedChannel(group string, model string, retry int) (*Channel,
+ 	for _, channelId := range channels {
+ 		if channel, ok := channelsIDM[channelId]; ok {
+ 			if channel.GetPriority() == targetPriority {
++				// Health-aware routing: skip channels that recently failed
++				// 健康感知路由：跳过最近失败的渠道
++				if !IsChannelHealthy(channelId) {
++					continue
++				}
+ 				sumWeight += channel.GetWeight()
+ 				targetChannels = append(targetChannels, channel)
+ 			}
